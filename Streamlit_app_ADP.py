@@ -21,7 +21,7 @@ def tela_login():
     
     if st.button("🔓 Acessar Sistema"):
         # Aqui você futuramente carregará os dados do JSON/Sheets
-        if user == "admin" and pwd == "admin123":
+        if user == "jonatha.santos" and pwd == "admin123":
             st.session_state.logado = True
             st.session_state.usuario = user
             st.session_state.perfil = "Administrador"
