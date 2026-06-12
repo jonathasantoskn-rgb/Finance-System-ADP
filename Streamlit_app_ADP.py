@@ -1,44 +1,26 @@
-import streamlit as st
-import google.generativeai as genai
-
-# Configuração da Chave (Certifique-se de que ela está salva nos Secrets do Streamlit)
-if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-
-def tela_login():
-    st.markdown("<h1 style='text-align: center;'>SISTEMA FINANCEIRO ADP</h1>", unsafe_allow_html=True)
-    st.write("Insira suas credenciais para acessar o painel")
-    
-    user = st.text_input("Usuário")
-    pwd = st.text_input("Senha", type="password")
-    
-    if st.button("🔓 Acessar Sistema"):
-        if user == "jonatha.santos" and pwd == "admin123":
-            st.session_state.logado = True
-            st.rerun()
-        else:
-            st.error("Usuário ou Senha incorretos!")
-
 def modulo_entrada():
     st.header("📥 Módulo de Entradas - IA")
     arquivo = st.file_uploader("Escolha uma nota fiscal ou recibo", type=["png", "jpg", "jpeg"])
-    if arquivo and st.button("Processar com IA"):
-        st.write("Processando...")
-
-def main():
-    if "logado" not in st.session_state:
-        st.session_state.logado = False
     
-    if not st.session_state.logado:
-        tela_login()
-    else:
-        st.sidebar.title("MENU")
-        opcao = st.sidebar.radio("Navegação", ["Entradas (IA)", "Sair"])
-        if opcao == "Entradas (IA)":
-            modulo_entrada()
-        elif opcao == "Sair":
-            st.session_state.logado = False
-            st.rerun()
-
-if __name__ == "__main__":
-    main()
+    if arquivo and st.button("Processar com IA"):
+        with st.spinner("IA analisando documento..."):
+            try:
+                # 1. Preparar o modelo
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                # 2. Ler os bytes da imagem
+                bytes_data = arquivo.getvalue()
+                
+                # 3. Enviar para a IA
+                prompt = "Extraia o valor total, a data da nota e o nome da empresa. Retorne em formato JSON."
+                response = model.generate_content([
+                    prompt,
+                    {"mime_type": "image/jpeg", "data": bytes_data}
+                ])
+                
+                # 4. Exibir o resultado
+                st.success("Dados extraídos com sucesso!")
+                st.json(response.text) # Aqui você verá o JSON que a IA criou
+                
+            except Exception as e:
+                st.error(f"Erro ao processar: {e}")
