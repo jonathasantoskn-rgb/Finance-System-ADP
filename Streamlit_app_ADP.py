@@ -1,7 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
 
-# Carrega a chave de forma segura do painel do Streamlit
+# Carrega a chave de forma segura
 api_key = st.secrets["GEMINI_API_KEY"]
 genai.configure(api_key=api_key)
 
@@ -14,11 +14,8 @@ def modulo_entrada():
         with st.spinner("IA analisando documento..."):
             try:
                 model = genai.GenerativeModel('gemini-1.5-flash')
-                
-                # Ler o conteúdo do arquivo
                 bytes_data = arquivo.getvalue()
                 
-                # Prompt para extração
                 prompt = "Extraia Valor, Data, Empresa e CNPJ deste documento. Retorne apenas JSON."
                 
                 response = model.generate_content([
@@ -26,9 +23,7 @@ def modulo_entrada():
                     {"mime_type": "image/jpeg", "data": bytes_data}
                 ])
                 
-                # Exibir resultado
                 st.success("Dados extraídos com sucesso!")
                 st.json(response.text)
-                
             except Exception as e:
                 st.error(f"Erro ao processar: {e}")
