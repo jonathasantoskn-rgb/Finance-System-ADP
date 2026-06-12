@@ -2,12 +2,9 @@ import streamlit as st
 import google.generativeai as genai
 import pandas as pd
 
-# Configuração da Chave de API de forma segura
-# (Lembre-se de adicionar a chave no painel "Secrets" do Streamlit Cloud)
+# Configuração da API Key (Certifique-se de que a chave está nos 'Secrets' do Streamlit)
 if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-
-# --- FUNÇÕES DE MÓDULOS ---
 
 def tela_login():
     st.markdown("<h1 style='text-align: center;'>🔐 SISTEMA FINANCEIRO ADP</h1>", unsafe_allow_html=True)
@@ -15,7 +12,6 @@ def tela_login():
     pwd = st.text_input("Senha", type="password")
     
     if st.button("Acessar Sistema"):
-        # Exemplo de credencial (em breve podemos usar um banco de dados)
         if user == "jonatha.santos" and pwd == "admin123":
             st.session_state.logado = True
             st.rerun()
@@ -27,11 +23,13 @@ def modulo_entrada():
     aba1, aba2 = st.tabs(["Processamento com IA", "Lançamento Manual"])
     
     with aba1:
-        arquivo = st.file_uploader("Escolha uma nota fiscal ou recibo", type=["png", "jpg", "jpeg"])
+        arquivo = st.file_uploader("Escolha uma nota fiscal ou recibo (JPG/PNG)", type=["png", "jpg", "jpeg"])
+        
         if arquivo and st.button("Processar com IA"):
             with st.spinner("IA analisando documento..."):
                 try:
-                   model = genai.GenerativeModel('gemini-1.5-flash-latest')
+                    # Usando uma versão estável do modelo
+                    model = genai.GenerativeModel('gemini-1.5-flash')
                     bytes_data = arquivo.getvalue()
                     
                     prompt = "Extraia Valor Total, Data da emissão, Nome da empresa e CNPJ deste documento. Retorne apenas JSON puro."
@@ -41,15 +39,13 @@ def modulo_entrada():
                         {"mime_type": "image/jpeg", "data": bytes_data}
                     ])
                     
-                    st.success("Dados extraídos!")
+                    st.success("Dados extraídos com sucesso!")
                     st.json(response.text)
                 except Exception as e:
                     st.error(f"Erro ao processar: {e}")
                     
     with aba2:
-        st.write("Formulário de Lançamento Manual (Em breve)")
-
-# --- ESTRUTURA PRINCIPAL ---
+        st.write("Formulário de Lançamento Manual em construção.")
 
 def main():
     if "logado" not in st.session_state:
