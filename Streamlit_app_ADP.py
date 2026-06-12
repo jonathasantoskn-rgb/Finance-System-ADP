@@ -3,8 +3,7 @@ import pandas as pd
 import json
 import os
 import re
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 
 # Configuração da página Web
 st.set_page_config(page_title="Sistema Integrante de Fluxo de Caixa", layout="wide")
@@ -23,7 +22,7 @@ PASTA_PROJETO = r"C:\Users\jonatha.santos\OneDrive - Kuehne+Nagel\Desktop\Projet
 CAMINHO_USUARIOS = os.path.join(PASTA_PROJETO, "usuarios.json")
 CAMINHO_SAIDAS = os.path.join(PASTA_PROJETO, "saidas.csv")
 
-# Garante a existência do diretório
+# Garante a existência do diretório local para evitar quebras se rodar fora da nuvem
 if not os.path.exists(PASTA_PROJETO):
     try: os.makedirs(PASTA_PROJETO)
     except: pass
@@ -59,7 +58,7 @@ def salvar_usuarios(usuarios):
             json.dump(usuarios, f, indent=4, ensure_ascii=False)
         return True
     except Exception as e:
-        st.error(f"Erro ao salvar alterações de usuários: {e}")
+        st.error(f"Erro ao salvar alterações de usuários localmente: {e}")
         return False
 
 def limpar_e_converter_valor(valor_texto):
@@ -140,9 +139,12 @@ def main_app():
             
             if arquivos_carregados and st.button("🚀 Processar com IA"):
                 try:
-                    client = genai.Client(api_key=API_KEY)
+                    # Configuração correta utilizando a SDK estável do GenAI
+                    genai.configure(api_key=API_KEY)
+                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    
                     campos_prompt = "\n".join([f"- \"{campo}\"" for campo in CAMPOS_PARAMETRIZADOS])
-                    prompt = f"Analise o comprovante enviado e extraia as informações estritamente no formato JSON plano:\n{campos_prompt}"
+                    prompt = f"Analise o comprovante enviado e extraia as informações estritamente no formato JSON plano (chave e valor correspondente):\n{campos_prompt}"
                     
                     for arq in arquivos_carregados:
                         with st.spinner(f"🧠 Analisando {arq.name}..."):
@@ -154,17 +156,18 @@ def main_app():
                             elif nome_minusculo.endswith(".pdf"): mime_type = "application/pdf"
                             else: mime_type = "application/octet-stream"
                             
-                            response = client.models.generate_content(
-                                model='gemini-2.5-flash',
-                                contents=[types.Part.from_bytes(data=bytes_arquivo, mime_type=mime_type), prompt]
-                            )
+                            # Estruturação correta do payload multi-modal estável
+                            dados_conteudo = [
+                                {
+                                    "mime_type": mime_type,
+                                    "data": bytes_arquivo
+                                },
+                                prompt
+                            ]
+                            
+                            response = model.generate_content(dados_conteudo)
                             
                             txt = response.text.strip()
                             if "
 http://googleusercontent.com/immersive_entry_chip/0
 http://googleusercontent.com/immersive_entry_chip/1
-
-### O que essa alteração traz de novo?
-* **Segurança de Login:** Se você marcar um usuário como `"Inativo"` no painel, ele será imediatamente bloqueado na tela de autenticação, impedindo o acesso à plataforma.
-* **Isolamento de Funcionalidades:** Usuários criados com a role `"Operador"` não visualizarão as abas de *Relatório Total* e nem terão acesso a este painel administrativo de usuários.
-* **Persistência Compartilhada:** Todo cadastro criado gera uma modificação direta no arquivo `usuarios.json` dentro da pasta local sincronizada com o OneDrive.
