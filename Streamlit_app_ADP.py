@@ -1,68 +1,70 @@
 import streamlit as st
 import pandas as pd
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-import json
 
-# --- CONFIGURAÇÃO DA CONEXÃO COM GOOGLE SHEETS ---
-def conectar_sheets():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    
-    # Carrega as credenciais seguras do painel "Secrets" do Streamlit
-    creds_dict = json.loads(st.secrets["gcp_service_account"])
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
-    
-    # ID da sua planilha (Extraído do link que você forneceu)
-    sheet = client.open_by_key("1gZbKfzeXmb9oP--5rOyFF2VFNwZrDx3Vv_EwX1DP2Gc").sheet1
-    return sheet
-
-# --- CONFIGURAÇÃO DA PÁGINA ---
+# --- CONFIGURAÇÃO INICIAL ---
 st.set_page_config(page_title="Sistema Financeiro ADP", layout="wide")
-st.title("💰 Sistema Financeiro ADP")
 
-# --- FORMULÁRIO DE LANÇAMENTO ---
-with st.form("form_saida"):
-    st.subheader("Registrar Nova Saída")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        nome = st.text_input("Nome Completo")
-        email = st.text_input("E-mail")
-        depto = st.selectbox("Departamento", ["TI", "Financeiro", "RH", "Operações"])
-    
-    with col2:
-        setor = st.text_input("Congregação / Setor")
-        data = st.date_input("Data da Saída")
-        valor = st.number_input("Valor (R$)", min_value=0.0, format="%.2f")
-    
-    motivo = st.text_area("Motivo")
-    submit = st.form_submit_button("Salvar no Google Sheets")
+# Inicializa o estado de login
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+    st.session_state.usuario = None
+    st.session_state.perfil = None
 
-# --- LÓGICA DE ENVIO ---
-if submit:
-    if nome and valor > 0:
-        try:
-            sheet = conectar_sheets()
-            # Dados a serem salvos (deve coincidir com as colunas da sua planilha)
-            dados = [nome, email, depto, setor, str(data), motivo, valor]
-            sheet.append_row(dados)
-            st.success("Dados enviados com sucesso para a planilha!")
-        except Exception as e:
-            st.error(f"Erro ao salvar: {e}")
-    else:
-        st.warning("Por favor, preencha o Nome e o Valor.")
+# --- FUNÇÕES DE MÓDULOS ---
 
-# --- VISUALIZAÇÃO DOS DADOS ---
-if st.checkbox("Exibir dados da planilha"):
-    try:
-        sheet = conectar_sheets()
-        # Converte a planilha em um DataFrame do Pandas
-        dados = sheet.get_all_records()
-        if dados:
-            df = pd.DataFrame(dados)
-            st.dataframe(df)
+def tela_login():
+    st.markdown("<h1 style='text-align: center;'>SISTEMA FINANCEIRO ADP</h1>", unsafe_allow_html=True)
+    st.write("Insira suas credenciais para acessar o painel")
+    
+    user = st.text_input("Usuário")
+    pwd = st.text_input("Senha", type="password")
+    
+    if st.button("🔓 Acessar Sistema"):
+        # Aqui você futuramente carregará os dados do JSON/Sheets
+        if user == "admin" and pwd == "admin123":
+            st.session_state.logado = True
+            st.session_state.usuario = user
+            st.session_state.perfil = "Administrador"
+            st.rerun()
         else:
-            st.info("A planilha está vazia.")
-    except Exception as e:
-        st.error(f"Erro ao carregar dados: {e}")
+            st.error("Usuário ou Senha incorretos!")
+
+def modulo_entrada():
+    st.header("📥 Módulo de Entradas - IA")
+    tab1, tab2 = st.tabs(["Processamento em Lote", "Lançamento Manual"])
+    with tab1:
+        st.write("Aqui virá a lógica de leitura com Gemini")
+    with tab2:
+        st.write("Formulário manual")
+
+def modulo_saida():
+    st.header("📤 Módulo de Saídas")
+    # Aqui virá o formulário que criamos anteriormente
+    st.write("Formulário de lançamento de despesas")
+
+# --- NAVEGAÇÃO PRINCIPAL ---
+def main():
+    if not st.session_state.logado:
+        tela_login()
+    else:
+        st.sidebar.title(f"👤 {st.session_state.perfil}")
+        st.sidebar.write(f"Usuário: {st.session_state.usuario}")
+        
+        menu = st.sidebar.radio("MENU NAVEGAÇÃO", 
+                                ["Entradas (IA)", "Saídas (Manual)", "Relatórios", "Gestão de Usuários"])
+        
+        if menu == "Entradas (IA)":
+            modulo_entrada()
+        elif menu == "Saídas (Manual)":
+            modulo_saida()
+        elif menu == "Relatórios":
+            st.header("📊 Relatório Total")
+        elif menu == "Gestão de Usuários":
+            st.header("⚙️ Gestão de Usuários")
+            
+        if st.sidebar.button("Sair"):
+            st.session_state.logado = False
+            st.rerun()
+
+if __name__ == "__main__":
+    main()
