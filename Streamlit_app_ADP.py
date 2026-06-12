@@ -4,12 +4,13 @@ import json
 import os
 import re
 from google import genai
+from google.genai import types
 
 # Configuração da página Web
 st.set_page_config(page_title="Sistema Integrante de Fluxo de Caixa", layout="wide")
 
 # --- SEGURANÇA: Chave de API ---
-# Recomendado salvar nos 'Secrets' do Streamlit Cloud como GEMINI_API_KEY
+# Resgata dos 'Secrets' do Streamlit Cloud. Se não houver, usa a chave padrão de fallback.
 API_KEY = st.secrets.get("GEMINI_API_KEY", "AQ.Ab8RN6LCBRVJ-avkTB0qm-Mh6TLxUSADK00fhiYwU3OIlp6B7A")
 
 CAMPOS_PARAMETRIZADOS = [
@@ -29,7 +30,7 @@ PASTA_PROJETO = r"C:\Users\jonatha.santos\OneDrive - Kuehne+Nagel\Desktop\Projet
 CAMINHO_USUARIOS = os.path.join(PASTA_PROJETO, "usuarios.json")
 CAMINHO_SAIDAS = os.path.join(PASTA_PROJETO, "saidas.csv")
 
-# Garante que as pastas e arquivos existam
+# Garante que as pastas e arquivos existam localmente se necessário
 if not os.path.exists(PASTA_PROJETO):
     try: os.makedirs(PASTA_PROJETO)
     except: pass
@@ -45,8 +46,11 @@ if not os.path.exists(CAMINHO_USUARIOS):
             "status": "Ativo"
         }
     }
-    with open(CAMINHO_USUARIOS, "w", encoding="utf-8") as f:
-        json.dump(admin_padrao, f, indent=4, ensure_ascii=False)
+    try:
+        with open(CAMINHO_USUARIOS, "w", encoding="utf-8") as f:
+            json.dump(admin_padrao, f, indent=4, ensure_ascii=False)
+    except:
+        pass
 
 
 # --- FUNÇÕES DE CONTROLE DE SESSÃO E DADOS ---
@@ -57,9 +61,21 @@ if "dados_consolidados" not in st.session_state:
 
 def carregar_usuarios():
     if os.path.exists(CAMINHO_USUARIOS):
-        with open(CAMINHO_USUARIOS, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+        try:
+            with open(CAMINHO_USUARIOS, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    # Fallback caso rode puramente na Nuvem sem o arquivo local carregado
+    return {
+        "jonatha.santos": {
+            "nome": "Jonatha Santos",
+            "senha": "admin123",
+            "perfil": "Administrador",
+            "setor": "Logística / TI",
+            "status": "Ativo"
+        }
+    }
 
 def limpar_e_converter_valor(valor_texto):
     if not valor_texto: return 0.0
@@ -128,25 +144,50 @@ def main_app():
         sub_aba1, sub_aba2, sub_aba3 = st.tabs(["🔄 Processamento em Lote", "✍️ Lançamento Manual", "📊 Dados Extraídos"])
         
         with sub_aba1:
-            arquivos_carregados = st.file_uploader("📂 Selecionar Imagens", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+            st.markdown("### Escolha uma nota fiscal ou recibo (JPG/PNG/PDF)")
+            arquivos_carregados = st.file_uploader("📂 Selecionar Arquivos", type=["png", "jpg", "jpeg", "pdf"], accept_multiple_files=True, label_visibility="collapsed")
             
-            if arquivos_carregados and st.button("🚀 Iniciar Leitura dos Comprovantes"):
+            if arquivos_carregados and st.button("🚀 Processar com IA"):
                 try:
+                    # Inicialização correta da SDK google-genai
                     client = genai.Client(api_key=API_KEY)
                     campos_prompt = "\n".join([f"- \"{campo}\"" for campo in CAMPOS_PARAMETRIZADOS])
+                    prompt = f"Analise o comprovante enviado e extraia as informações estritamente no formato JSON plano (chave e valor correspondente):\n{campos_prompt}"
                     
                     for arq in arquivos_carregados:
                         with st.spinner(f"🧠 Analisando {arq.name}..."):
-                            bytes_img = arq.getvalue()
-                            prompt = f"Analise o comprovante e extraia em JSON plano:\n{campos_prompt}"
-                            mime = "image/png" if arq.name.lower().endswith(".png") else "image/jpeg"
+                            bytes_arquivo = arq.getvalue()
                             
+                            # Identifica o Content-Type/MIME type dinamicamente para evitar rejeição da API
+                            nome_minusculo = arq.name.lower()
+                            if nome_minusculo.endswith(".png"):
+                                mime_type = "image/png"
+                            elif nome_minusculo.endswith((".jpg", ".jpeg")):
+                                mime_type = "image/jpeg"
+                            elif nome_minusculo.endswith(".pdf"):
+                                mime_type = "application/pdf"
+                            else:
+                                mime_type = "application/octet-stream"
+                            
+                            # Chamada correta utilizando a sintaxe estável da nova SDK e o modelo recomendado
                             response = client.models.generate_content(
                                 model='gemini-2.5-flash',
-                                contents=[genai.types.Part.from_bytes(data=bytes_img, mime_type=mime), prompt]
+                                contents=[
+                                    types.Part.from_bytes(
+                                        data=bytes_arquivo,
+                                        mime_type=mime_type
+                                    ),
+                                    prompt
+                                ]
                             )
                             
-                            txt = response.text.strip().replace("```json", "").replace("```", "")
+                            # Limpeza robusta do Markdown de blocos de código JSON
+                            txt = response.text.strip()
+                            if "```json" in txt:
+                                txt = txt.split("```json")[1].split("```")[0].strip()
+                            elif "```" in txt:
+                                txt = txt.split("```")[1].split("```")[0].strip()
+                                
                             dados_json = json.loads(txt)
                             
                             reg = {campo: dados_json.get(campo, "") for campo in CAMPOS_PARAMETRIZADOS}
@@ -155,9 +196,11 @@ def main_app():
                             reg["Setor Lançamento"] = st.session_state.setor_logado
                             
                             st.session_state.dados_consolidados.append(reg)
-                    st.success("Lote processado com sucesso!")
+                            
+                    st.success("Todos os comprovantes foram processados com sucesso!")
+                    st.rerun()
                 except Exception as e:
-                    st.error(f"Erro na API do Gemini: {e}")
+                    st.error(f"Erro ao processar: {e}")
                     
         with sub_aba2:
             with st.form("Cadastro Manual Entrada"):
@@ -172,9 +215,9 @@ def main_app():
                     reg["Setor Lançamento"] = st.session_state.setor_logado
                     st.session_state.dados_consolidados.append(reg)
                     st.success("Adicionado com sucesso!")
+                    st.rerun()
                     
         with sub_aba3:
-            # Dashboard Cards do Streamlit
             col1, col2 = st.columns(2)
             qtd_comprovantes = len(st.session_state.dados_consolidados)
             soma_total = sum([limpar_e_converter_valor(reg.get("Valor da Transação", 0)) for reg in st.session_state.dados_consolidados])
@@ -218,15 +261,21 @@ def main_app():
                         "Usuário Lançamento": st.session_state.usuario_logado, "Setor Lançamento": st.session_state.setor_logado
                     }
                     df_nova = pd.DataFrame([nova_saida])
-                    df_nova.to_csv(CAMINHO_SAIDAS, mode='a', header=not os.path.exists(CAMINHO_SAIDAS), index=False, sep=";", encoding="utf-8-sig")
-                    st.success("Lançamento de Saída registrado!")
+                    try:
+                        df_nova.to_csv(CAMINHO_SAIDAS, mode='a', header=not os.path.exists(CAMINHO_SAIDAS), index=False, sep=";", encoding="utf-8-sig")
+                        st.success("Lançamento de Saída registrado com sucesso!")
+                    except Exception as e:
+                        st.error(f"Erro ao salvar arquivo local (OneDrive): {e}. Verifique as permissões de gravação.")
 
         with sub_saida2:
             if os.path.exists(CAMINHO_SAIDAS):
-                df_historico_saidas = pd.read_csv(CAMINHO_SAIDAS, sep=";", encoding="utf-8-sig")
-                st.dataframe(df_historico_saidas, use_container_width=True)
+                try:
+                    df_historico_saidas = pd.read_csv(CAMINHO_SAIDAS, sep=";", encoding="utf-8-sig")
+                    st.dataframe(df_historico_saidas, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Erro ao ler histórico: {e}")
             else:
-                st.info("Nenhum histórico de saídas registrado localmente.")
+                st.info("Nenhum histórico de saídas registrado localmente no momento.")
 
     # ==========================================
     # ABAS DO ADMINISTRADOR
