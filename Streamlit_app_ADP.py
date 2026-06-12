@@ -12,7 +12,6 @@ def tela_login():
     pwd = st.text_input("Senha", type="password")
     
     if st.button("Acessar Sistema"):
-        # Login simplificado para teste
         if user == "jonatha.santos" and pwd == "admin123":
             st.session_state.logado = True
             st.rerun()
@@ -24,20 +23,24 @@ def modulo_entrada():
     aba1, aba2 = st.tabs(["Processamento com IA", "Lançamento Manual"])
     
     with aba1:
-        arquivo = st.file_uploader("Escolha uma nota fiscal ou recibo (JPG/PNG)", type=["png", "jpg", "jpeg"])
+        # Aceita imagens e PDF
+        arquivo = st.file_uploader("Escolha nota fiscal ou recibo (JPG/PNG/PDF)", type=["png", "jpg", "jpeg", "pdf"])
         
         if arquivo and st.button("Processar com IA"):
             with st.spinner("IA analisando documento..."):
                 try:
-                    # Utilizamos o modelo flash-latest para evitar erros de versão 404
+                    # Modelo mais estável e capaz
                     model = genai.GenerativeModel('gemini-1.5-flash-latest')
                     bytes_data = arquivo.getvalue()
+                    
+                    # Define o tipo MIME correto
+                    mime_type = "application/pdf" if arquivo.type == "application/pdf" else "image/jpeg"
                     
                     prompt = "Extraia o Valor Total, Data da emissão, Nome da empresa e CNPJ deste documento. Retorne apenas JSON puro."
                     
                     response = model.generate_content([
                         prompt,
-                        {"mime_type": "image/jpeg", "data": bytes_data}
+                        {"mime_type": mime_type, "data": bytes_data}
                     ])
                     
                     st.success("Dados extraídos com sucesso!")
