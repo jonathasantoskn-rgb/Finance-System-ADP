@@ -31,7 +31,7 @@ def modulo_entrada():
         if arquivo and st.button("Processar com IA"):
             with st.spinner("IA analisando documento..."):
                 try:
-                    model = genai.GenerativeModel('gemini-1.5-flash')
+                   model = genai.GenerativeModel('gemini-1.5-flash-latest')
                     bytes_data = arquivo.getvalue()
                     
                     prompt = "Extraia Valor Total, Data da emissão, Nome da empresa e CNPJ deste documento. Retorne apenas JSON puro."
