@@ -30,7 +30,7 @@ def modulo_entrada():
             with st.spinner("IA analisando documento..."):
                 try:
                     # Modelo mais estável e capaz
-                    model = genai.GenerativeModel('gemini-1.5-pro')
+                    model = genai.GenerativeModel('gemini-pro')
                     bytes_data = arquivo.getvalue()
                     
                     # Define o tipo MIME correto
