@@ -1,3 +1,7 @@
 streamlit
 pandas
-google-genai
+openpyxl
+passlib
+bcrypt
+google-cloud-aiplatform
+vertexai
