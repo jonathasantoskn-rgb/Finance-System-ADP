@@ -12,6 +12,7 @@ def tela_login():
     pwd = st.text_input("Senha", type="password")
     
     if st.button("Acessar Sistema"):
+        # Login simplificado para teste
         if user == "jonatha.santos" and pwd == "admin123":
             st.session_state.logado = True
             st.rerun()
@@ -28,11 +29,11 @@ def modulo_entrada():
         if arquivo and st.button("Processar com IA"):
             with st.spinner("IA analisando documento..."):
                 try:
-                    # Usando uma versão estável do modelo
-                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    # Utilizamos o modelo flash-latest para evitar erros de versão 404
+                    model = genai.GenerativeModel('gemini-1.5-flash-latest')
                     bytes_data = arquivo.getvalue()
                     
-                    prompt = "Extraia Valor Total, Data da emissão, Nome da empresa e CNPJ deste documento. Retorne apenas JSON puro."
+                    prompt = "Extraia o Valor Total, Data da emissão, Nome da empresa e CNPJ deste documento. Retorne apenas JSON puro."
                     
                     response = model.generate_content([
                         prompt,
