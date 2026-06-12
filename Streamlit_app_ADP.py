@@ -10,7 +10,6 @@ from google.genai import types
 st.set_page_config(page_title="Sistema Integrante de Fluxo de Caixa", layout="wide")
 
 # --- SEGURANÇA: Chave de API ---
-# Resgata dos 'Secrets' do Streamlit Cloud. Se não houver, usa a chave padrão de fallback.
 API_KEY = st.secrets.get("GEMINI_API_KEY", "AQ.Ab8RN6LCBRVJ-avkTB0qm-Mh6TLxUSADK00fhiYwU3OIlp6B7A")
 
 CAMPOS_PARAMETRIZADOS = [
@@ -19,24 +18,31 @@ CAMPOS_PARAMETRIZADOS = [
     "CNPJ do Destinatário", "Instituição do Destinatário", "Chave Pix do Recebedor"
 ]
 
-COLUNAS_SAIDAS = [
-    "Nome Completo", "E-Mail", "Departamento", "Congregação_Setor",
-    "Data Saída", "Motivo", "Valor", "Valor em Especie", "Arquivo Comprovante",
-    "Usuário Lançamento", "Setor Lançamento"
-]
-
-# Caminho do banco de dados local (OneDrive)
+# Caminhos do banco de dados (OneDrive)
 PASTA_PROJETO = r"C:\Users\jonatha.santos\OneDrive - Kuehne+Nagel\Desktop\Projetos VS code"
 CAMINHO_USUARIOS = os.path.join(PASTA_PROJETO, "usuarios.json")
 CAMINHO_SAIDAS = os.path.join(PASTA_PROJETO, "saidas.csv")
 
-# Garante que as pastas e arquivos existam localmente se necessário
+# Garante a existência do diretório
 if not os.path.exists(PASTA_PROJETO):
     try: os.makedirs(PASTA_PROJETO)
     except: pass
 
-if not os.path.exists(CAMINHO_USUARIOS):
-    admin_padrao = {
+# --- FUNÇÕES DE PERSISTÊNCIA (USUÁRIOS) ---
+def carregar_usuarios():
+    if os.path.exists(CAMINHO_USUARIOS):
+        try:
+            with open(CAMINHO_USUARIOS, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return obter_admin_padrao()
+    else:
+        usuarios = obter_admin_padrao()
+        salvar_usuarios(usuarios)
+        return usuarios
+
+def obter_admin_padrao():
+    return {
         "jonatha.santos": {
             "nome": "Jonatha Santos",
             "email": "jonatha.santos.kn@gmail.com",
@@ -46,36 +52,15 @@ if not os.path.exists(CAMINHO_USUARIOS):
             "status": "Ativo"
         }
     }
+
+def salvar_usuarios(usuarios):
     try:
         with open(CAMINHO_USUARIOS, "w", encoding="utf-8") as f:
-            json.dump(admin_padrao, f, indent=4, ensure_ascii=False)
-    except:
-        pass
-
-
-# --- FUNÇÕES DE CONTROLE DE SESSÃO E DADOS ---
-if "logado" not in st.session_state:
-    st.session_state.logado = False
-if "dados_consolidados" not in st.session_state:
-    st.session_state.dados_consolidados = []
-
-def carregar_usuarios():
-    if os.path.exists(CAMINHO_USUARIOS):
-        try:
-            with open(CAMINHO_USUARIOS, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return {}
-    # Fallback caso rode puramente na Nuvem sem o arquivo local carregado
-    return {
-        "jonatha.santos": {
-            "nome": "Jonatha Santos",
-            "senha": "admin123",
-            "perfil": "Administrador",
-            "setor": "Logística / TI",
-            "status": "Ativo"
-        }
-    }
+            json.dump(usuarios, f, indent=4, ensure_ascii=False)
+        return True
+    except Exception as e:
+        st.error(f"Erro ao salvar alterações de usuários: {e}")
+        return False
 
 def limpar_e_converter_valor(valor_texto):
     if not valor_texto: return 0.0
@@ -90,7 +75,14 @@ def limpar_e_converter_valor(valor_texto):
         return 0.0
 
 
-# --- RECURSOS VISUAIS: TELA DE LOGIN ---
+# --- CONTROLE DE SESSÃO ---
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+if "dados_consolidados" not in st.session_state:
+    st.session_state.dados_consolidados = []
+
+
+# --- TELA DE LOGIN ---
 def tela_login():
     st.markdown("<h2 style='text-align: center;'>🔐 SISTEMA FINANCEIRO</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: gray;'>Insira suas credenciais para acessar o painel</p>", unsafe_allow_html=True)
@@ -117,7 +109,7 @@ def tela_login():
 
 # --- CORPO PRINCIPAL DO APP ---
 def main_app():
-    # Barra Lateral (Sidebar) com Informações do Usuário
+    # Barra Lateral
     st.sidebar.markdown(f"### 👤 {st.session_state.perfil_logado}")
     st.sidebar.text(f"Usuário: {st.session_state.usuario_logado}")
     st.sidebar.text(f"Setor: {st.session_state.setor_logado}")
@@ -128,7 +120,7 @@ def main_app():
         
     st.title("📑 Sistema Integrante de Fluxo de Caixa - IA & Gestão")
     
-    # Define as abas disponíveis baseado no perfil do usuário
+    # Abas dinâmicas com base no perfil
     abas_disponiveis = ["📥 Entradas (IA)", "📤 Saídas (Manual)"]
     if st.session_state.perfil_logado == "Administrador":
         abas_disponiveis.extend(["📊 Relatório Total", "⚙️ Gestão de Usuários"])
@@ -140,7 +132,6 @@ def main_app():
     # ==========================================
     with aba_selecionada[0]:
         st.subheader("Módulo de Entradas - Consolidação de Recebimentos")
-        
         sub_aba1, sub_aba2, sub_aba3 = st.tabs(["🔄 Processamento em Lote", "✍️ Lançamento Manual", "📊 Dados Extraídos"])
         
         with sub_aba1:
@@ -149,150 +140,31 @@ def main_app():
             
             if arquivos_carregados and st.button("🚀 Processar com IA"):
                 try:
-                    # Inicialização correta da SDK google-genai
                     client = genai.Client(api_key=API_KEY)
                     campos_prompt = "\n".join([f"- \"{campo}\"" for campo in CAMPOS_PARAMETRIZADOS])
-                    prompt = f"Analise o comprovante enviado e extraia as informações estritamente no formato JSON plano (chave e valor correspondente):\n{campos_prompt}"
+                    prompt = f"Analise o comprovante enviado e extraia as informações estritamente no formato JSON plano:\n{campos_prompt}"
                     
                     for arq in arquivos_carregados:
                         with st.spinner(f"🧠 Analisando {arq.name}..."):
                             bytes_arquivo = arq.getvalue()
-                            
-                            # Identifica o Content-Type/MIME type dinamicamente para evitar rejeição da API
                             nome_minusculo = arq.name.lower()
-                            if nome_minusculo.endswith(".png"):
-                                mime_type = "image/png"
-                            elif nome_minusculo.endswith((".jpg", ".jpeg")):
-                                mime_type = "image/jpeg"
-                            elif nome_minusculo.endswith(".pdf"):
-                                mime_type = "application/pdf"
-                            else:
-                                mime_type = "application/octet-stream"
                             
-                            # Chamada correta utilizando a sintaxe estável da nova SDK e o modelo recomendado
+                            if nome_minusculo.endswith(".png"): mime_type = "image/png"
+                            elif nome_minusculo.endswith((".jpg", ".jpeg")): mime_type = "image/jpeg"
+                            elif nome_minusculo.endswith(".pdf"): mime_type = "application/pdf"
+                            else: mime_type = "application/octet-stream"
+                            
                             response = client.models.generate_content(
                                 model='gemini-2.5-flash',
-                                contents=[
-                                    types.Part.from_bytes(
-                                        data=bytes_arquivo,
-                                        mime_type=mime_type
-                                    ),
-                                    prompt
-                                ]
+                                contents=[types.Part.from_bytes(data=bytes_arquivo, mime_type=mime_type), prompt]
                             )
                             
-                            # Limpeza robusta do Markdown de blocos de código JSON
                             txt = response.text.strip()
-                            if "```json" in txt:
-                                txt = txt.split("```json")[1].split("```")[0].strip()
-                            elif "```" in txt:
-                                txt = txt.split("```")[1].split("```")[0].strip()
-                                
-                            dados_json = json.loads(txt)
-                            
-                            reg = {campo: dados_json.get(campo, "") for campo in CAMPOS_PARAMETRIZADOS}
-                            reg["Nome do Arquivo"] = arq.name
-                            reg["Usuário Lançamento"] = st.session_state.usuario_logado
-                            reg["Setor Lançamento"] = st.session_state.setor_logado
-                            
-                            st.session_state.dados_consolidados.append(reg)
-                            
-                    st.success("Todos os comprovantes foram processados com sucesso!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao processar: {e}")
-                    
-        with sub_aba2:
-            with st.form("Cadastro Manual Entrada"):
-                inputs_manual = {}
-                for campo in CAMPOS_PARAMETRIZADOS:
-                    inputs_manual[campo] = st.text_input(campo)
-                
-                if st.form_submit_button("💾 Gravar Entrada Manualmente"):
-                    reg = {campo: inputs_manual[campo].strip() for campo in CAMPOS_PARAMETRIZADOS}
-                    reg["Nome do Arquivo"] = "✍️ Lançamento Manual"
-                    reg["Usuário Lançamento"] = st.session_state.usuario_logado
-                    reg["Setor Lançamento"] = st.session_state.setor_logado
-                    st.session_state.dados_consolidados.append(reg)
-                    st.success("Adicionado com sucesso!")
-                    st.rerun()
-                    
-        with sub_aba3:
-            col1, col2 = st.columns(2)
-            qtd_comprovantes = len(st.session_state.dados_consolidados)
-            soma_total = sum([limpar_e_converter_valor(reg.get("Valor da Transação", 0)) for reg in st.session_state.dados_consolidados])
-            
-            col1.metric("TOTAL COMPROVANTES", qtd_comprovantes)
-            col2.metric("VALOR TOTAL PROCESSADO", f"R$ {soma_total:,.2f}")
-            
-            if st.session_state.perfil_logado == "Administrador" and st.button("🗑️ Limpar Lote Atual"):
-                st.session_state.dados_consolidados = []
-                st.rerun()
-                
-            if st.session_state.dados_consolidados:
-                df_entradas = pd.DataFrame(st.session_state.dados_consolidados)
-                st.dataframe(df_entradas, use_container_width=True)
+                            if "
+http://googleusercontent.com/immersive_entry_chip/0
+http://googleusercontent.com/immersive_entry_chip/1
 
-    # ==========================================
-    # ABA 2: MÓDULO DE SAÍDAS
-    # ==========================================
-    with aba_selecionada[1]:
-        st.subheader("Módulo de Saídas - Lançamento de Despesas")
-        sub_saida1, sub_saida2 = st.tabs(["📝 Formulário de Cadastro", "📋 Histórico de Saídas"])
-        
-        with sub_saida1:
-            with st.form("Formulário Saídas"):
-                nome_saida = st.text_input("Nome Completo")
-                email_saida = st.text_input("E-Mail")
-                dept_saida = st.text_input("Departamento")
-                setor_saida = st.text_input("Congregação / Setor")
-                data_saida = st.text_input("Data Saída")
-                motivo_saida = st.text_input("Motivo (Descrição)")
-                valor_saida = st.text_input("Valor (R$)")
-                especie_saida = st.text_input("Valor em Espécie (R$)")
-                anexo_saida = st.file_uploader("📎 Anexar Recibo (Imagem/PDF)", type=["png", "jpg", "jpeg", "pdf"])
-                
-                if st.form_submit_button("💾 Registrar Lançamento de Saída"):
-                    nome_anexo = anexo_saida.name if anexo_saida else "Nenhum arquivo"
-                    nova_saida = {
-                        "Nome Completo": nome_saida, "E-Mail": email_saida, "Departamento": dept_saida,
-                        "Congregação_Setor": setor_saida, "Data Saída": data_saida, "Motivo": motivo_saida,
-                        "Valor": valor_saida, "Valor em Especie": especie_saida, "Arquivo Comprovante": nome_anexo,
-                        "Usuário Lançamento": st.session_state.usuario_logado, "Setor Lançamento": st.session_state.setor_logado
-                    }
-                    df_nova = pd.DataFrame([nova_saida])
-                    try:
-                        df_nova.to_csv(CAMINHO_SAIDAS, mode='a', header=not os.path.exists(CAMINHO_SAIDAS), index=False, sep=";", encoding="utf-8-sig")
-                        st.success("Lançamento de Saída registrado com sucesso!")
-                    except Exception as e:
-                        st.error(f"Erro ao salvar arquivo local (OneDrive): {e}. Verifique as permissões de gravação.")
-
-        with sub_saida2:
-            if os.path.exists(CAMINHO_SAIDAS):
-                try:
-                    df_historico_saidas = pd.read_csv(CAMINHO_SAIDAS, sep=";", encoding="utf-8-sig")
-                    st.dataframe(df_historico_saidas, use_container_width=True)
-                except Exception as e:
-                    st.error(f"Erro ao ler histórico: {e}")
-            else:
-                st.info("Nenhum histórico de saídas registrado localmente no momento.")
-
-    # ==========================================
-    # ABAS DO ADMINISTRADOR
-    # ==========================================
-    if st.session_state.perfil_logado == "Administrador":
-        with aba_selecionada[2]:
-            st.subheader("📊 Relatórios Consolidados Globais")
-            st.text("Visão geral construída a partir dos bancos de dados.")
-            
-        with aba_selecionada[3]:
-            st.subheader("⚙️ Gestão de Usuários do Sistema")
-            usuarios_cadastrados = carregar_usuarios()
-            st.json(usuarios_cadastrados)
-
-# --- EXECUÇÃO DO FLUXO DO APP ---
-if __name__ == "__main__":
-    if not st.session_state.logado:
-        tela_login()
-    else:
-        main_app()
+### O que essa alteração traz de novo?
+* **Segurança de Login:** Se você marcar um usuário como `"Inativo"` no painel, ele será imediatamente bloqueado na tela de autenticação, impedindo o acesso à plataforma.
+* **Isolamento de Funcionalidades:** Usuários criados com a role `"Operador"` não visualizarão as abas de *Relatório Total* e nem terão acesso a este painel administrativo de usuários.
+* **Persistência Compartilhada:** Todo cadastro criado gera uma modificação direta no arquivo `usuarios.json` dentro da pasta local sincronizada com o OneDrive.
